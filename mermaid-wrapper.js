@@ -1,7 +1,9 @@
 // sketched-mermaid to fully-formatted mermaid markdown
-// features: group actors or unique actors (meta block could be for each connection)
+// feature: group actors or unique actors (meta block could be for each connection)
 // or separate with different files
-// unique ids is default
+// unique ids is default > for all?
+// feature: filter super-only
+// feature: strict-mode to contain order / sequence
 
 const { readFileSync } = require('fs')
 const path = require('path')
@@ -10,7 +12,8 @@ const crypto = require('crypto')
 const filename = 'bat-tauschverhaeltnisse.md'
 const filepath = path.resolve(`samples/${filename}`)
 const fileContent = readFileSync(filepath).toString()
-const slices = fileContent.split('\n').filter(Boolean)
+const slices = fileContent.split('\n').filter(Boolean) // only slices with content
+const lastContent = slices.length
 
 const isHeadline = (slice) => {
   if (slice.charAt(0) !== '#') {
@@ -45,7 +48,6 @@ const hasMeta = (file) => {
     return false
   }
   return true
-  // ToDo: Return Meta Flags for Mode
 }
 
 const splitComponents = (slice) => {
@@ -64,7 +66,7 @@ const splitComponents = (slice) => {
 
 const componentToObject = (comp) => {
   const [sender, object, receiver] = comp
-  return { sender: { name: sender }, object, receiver: { name: receiver } }
+  return { content: { sender: { label: sender }, object: { label: object }, receiver: { label: receiver } } }
 }
 
 const removeBoldFormatting = (string) => {
@@ -77,13 +79,14 @@ const removeHeadlineFormatting = (string) => {
 }
 
 const getContentId = (string) => {
+  // stackoverflow.com/questions/5878682/node-js-hash-string#comment15839272_11869589
   return crypto.createHash('sha1').update(string).digest('hex').slice(0, 6)
 }
 
 const getUniqueContentID = (string) => {
   const randomString = crypto.randomBytes(1).toString('hex')
   const base = getContentId(string)
-  return base + randomString
+  return `${base}/${randomString}`
 }
 
 const structureCollection = []
@@ -95,41 +98,58 @@ let lastSuper
 let lastSuperId
 
 const classifyContent = (content) => {
+  if (hasMeta(content)) {
+    console.log('hasMeta: true')
+    // ToDo: read header, overwrite defaults
+  } else {
+    console.log('hasMeta: false')
+    // ToDo: no header, use defaults
+  }
   content.forEach((slice, index) => {
     if (isComment(slice)) {
       return
     }
     if (isHeadline(slice)) {
-      // console.log(index, slice)
       lastHeadline = removeHeadlineFormatting(slice)
-      lastHeadlineId = getContentId(lastHeadline)
-      // console.log(lastHeadline)
-    }
-    if (isSuper(slice)) {
-      // console.log(index, slice)
-      lastSuper = removeBoldFormatting(slice)
-      lastSuperId = getContentId(lastSuper)
+      lastHeadlineId = getUniqueContentID(lastHeadline)
       const sliceObj = {
-        name: lastSuper,
+        id: lastHeadlineId,
+        label: lastHeadline,
+        meta: {
+          line: index,
+          type: "headline",
+          mode: "unique", // ToDo
+        },
+      }
+      structureCollection.push(sliceObj)
+    }
+    if (isSuper(slice)) { // supers should not be unique? > handle current case of doube entries with different lines
+      lastSuper = removeBoldFormatting(slice)
+      lastSuperId = getUniqueContentID(lastSuper)
+      const sliceObj = {
+        id: lastSuperId,
+        label: lastSuper,
         meta: {
           context: {
             label: lastHeadline,
-            id: lastHeadlineId
+            id: lastHeadlineId,
           },
           line: index,
-          type: 'super',
-          mode: 'unique'
-        }
+          type: "super",
+          mode: "unique", // ToDo
+        },
       }
       structureCollection.push(sliceObj)
     }
     if (hasRelation(slice) && !isSuper(slice)) {
+      const label = slice
       const comps = splitComponents(slice)
       const sliceObj = componentToObject(comps)
-      // content hash + random for unique + substring
-      // stackoverflow.com/questions/5878682/node-js-hash-string#comment15839272_11869589
-      sliceObj.sender.id = getContentId(sliceObj.sender.name)
-      sliceObj.receiver.id = getContentId(sliceObj.receiver.name)
+      sliceObj.label = label
+      sliceObj.id = getUniqueContentID(label)
+      sliceObj.content.sender.id = getUniqueContentID(sliceObj.content.sender.label)
+      sliceObj.content.object.id = getUniqueContentID(sliceObj.content.object.label)
+      sliceObj.content.receiver.id = getUniqueContentID(sliceObj.content.receiver.label)
       sliceObj.meta = {
         context: {
           label: lastSuper,
@@ -137,20 +157,58 @@ const classifyContent = (content) => {
         },
         line: index,
         type: 'detail',
-        mode: 'unique'
+        mode: 'unique' // ToDo
       }
-      // console.log(sliceObj)
       relationsCollection.push(sliceObj)
     }
   })
 }
 
-classifyContent(slices)
-console.log(structureCollection)
-// console.log(relationsCollection)
-// console.log(slices.length)
+const createBlockIndex = () => {
+  const headlines = structureCollection.filter(
+    (entry) => entry.meta.type === "headline"
+  )
+  // HEADLINES
+  headlines.forEach((headline) => {
+    // ToDo: Handle Multiple Headlines
+    console.log(headline)
+    const rangeStart = headline.meta.line
+    const supers = structureCollection.filter(
+      (entry) => entry.meta.type === "super"
+    )
+    // SUPERS WITHIN EACH HEADLINE
+    supers.forEach((candidate) => {
+      const superStartRange = candidate.meta.line
+      const superEndRangeCandidates = structureCollection.filter(
+        (entry) => entry.meta.line > superStartRange + 1
+      )
+      if (!superEndRangeCandidates.length >= 0) {
+        const blockCandidates = relationsCollection.filter(
+          (entry) =>
+            entry.meta.line > superStartRange
+        )
+        console.log("blockCandidates:", blockCandidates)
+        return
+      }
+      const superEndRange = superEndRangeCandidates[0].meta.line - 1
+      const blockCandidates = relationsCollection.filter(
+        (entry) =>
+          entry.meta.line > superStartRange && entry.meta.line < superEndRange
+      )
+      console.log("blockCandidates:", blockCandidates)
+      // ToDo: Save IDs of BlockCandidates (with ID of SUPER) 
+    })
+  })
+}
 
-// headline or "super"
+
+classifyContent(slices)
+createBlockIndex()
+// ToDo: Write Mermaid Markdown
+
+
+// Feature: One file, different mermaid blocks
+// headline or "super"?
 // ```mermaid
 // graph TD / LR
 // >> graph content
@@ -159,4 +217,3 @@ console.log(structureCollection)
 
 // ToDo:
 // identify group
-// set uuid for same content

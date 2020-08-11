@@ -1,6 +1,16 @@
----
-title: BAT Research
----
+## Super-Tauschverhältnisse
+
+**User >> Information >> Werbetreibende**
+
+**Werbetreibende >> BAT >> User**
+
+**Investor:innen >> Kapital >> Brave Inc.**
+
+**User >> BAT >> Publisher/Creator**
+
+**Brave Inc. >> Nutzungsvorteile >> User**
+
+
 
 ## Tauschverhältnisse
 
