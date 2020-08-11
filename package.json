@@ -1,0 +1,11 @@
+{
+  "name": "mermaid-wrapper",
+  "version": "1.0.0",
+  "description": "![Node.js CI](https://github.com/mikehuntemann/21LST/workflows/Node.js%20CI/badge.svg)",
+  "main": "mermaid-wrapper.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Mike Huntemann",
+  "license": "ISC"
+}
