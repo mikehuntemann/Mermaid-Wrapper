@@ -2,7 +2,7 @@
 // feature: group actors or unique actors (meta block could be for each connection)
 // or separate with different files
 // unique ids is default > for all?
-// feature: filter super-only
+// feature: filter super-only ('build summary')
 // feature: strict-mode to contain order / sequence
 
 const { readFileSync } = require('fs')
@@ -66,7 +66,13 @@ const splitComponents = (slice) => {
 
 const componentToObject = (comp) => {
   const [sender, object, receiver] = comp
-  return { content: { sender: { label: sender }, object: { label: object }, receiver: { label: receiver } } }
+  return {
+    content: {
+      sender: { label: sender },
+      object: { label: object },
+      receiver: { label: receiver }
+    }
+  }
 }
 
 const removeBoldFormatting = (string) => {
@@ -87,6 +93,40 @@ const getUniqueContentID = (string) => {
   const randomString = crypto.randomBytes(1).toString('hex')
   const base = getContentId(string)
   return `${base}/${randomString}`
+}
+
+const getStartRange = (array, currentIndex) => {
+  return array[currentIndex].meta.line
+}
+
+const getEndRange = (array, currentIndex) => {
+  const nextIndex = currentIndex + 1
+  console.log(
+    'currentIndex:',
+    currentIndex,
+    'nextIndex:',
+    nextIndex,
+    'array.length:',
+    array.length
+  )
+  if (array.length <= nextIndex) {
+    return lastContent
+  }
+  return array[nextIndex].meta.line - 1
+}
+
+const getCandidates = (collection, type, startRange, endRange) => {
+  const candidaties = collection.filter(
+    (entry) =>
+      entry.meta.type === type &&
+      entry.meta.line > startRange &&
+      entry.meta.line < endRange
+  )
+  return candidaties
+}
+
+const getTypeMatch = (collection, type) => {
+  return collection.filter((entry) => entry.meta.type === type)
 }
 
 const structureCollection = []
@@ -117,13 +157,14 @@ const classifyContent = (content) => {
         label: lastHeadline,
         meta: {
           line: index,
-          type: "headline",
-          mode: "unique", // ToDo
-        },
+          type: 'headline',
+          mode: 'unique' // ToDo
+        }
       }
       structureCollection.push(sliceObj)
     }
-    if (isSuper(slice)) { // supers should not be unique? > handle current case of doube entries with different lines
+    if (isSuper(slice)) {
+      // supers should not be unique? > handle current case of doube entries with different lines
       lastSuper = removeBoldFormatting(slice)
       lastSuperId = getUniqueContentID(lastSuper)
       const sliceObj = {
@@ -132,12 +173,12 @@ const classifyContent = (content) => {
         meta: {
           context: {
             label: lastHeadline,
-            id: lastHeadlineId,
+            id: lastHeadlineId
           },
           line: index,
-          type: "super",
-          mode: "unique", // ToDo
-        },
+          type: 'super',
+          mode: 'unique' // ToDo
+        }
       }
       structureCollection.push(sliceObj)
     }
@@ -147,9 +188,15 @@ const classifyContent = (content) => {
       const sliceObj = componentToObject(comps)
       sliceObj.label = label
       sliceObj.id = getUniqueContentID(label)
-      sliceObj.content.sender.id = getUniqueContentID(sliceObj.content.sender.label)
-      sliceObj.content.object.id = getUniqueContentID(sliceObj.content.object.label)
-      sliceObj.content.receiver.id = getUniqueContentID(sliceObj.content.receiver.label)
+      sliceObj.content.sender.id = getUniqueContentID(
+        sliceObj.content.sender.label
+      )
+      sliceObj.content.object.id = getUniqueContentID(
+        sliceObj.content.object.label
+      )
+      sliceObj.content.receiver.id = getUniqueContentID(
+        sliceObj.content.receiver.label
+      )
       sliceObj.meta = {
         context: {
           label: lastSuper,
@@ -165,47 +212,41 @@ const classifyContent = (content) => {
 }
 
 const createBlockIndex = () => {
-  const headlines = structureCollection.filter(
-    (entry) => entry.meta.type === "headline"
-  )
-  // HEADLINES
-  headlines.forEach((headline) => {
-    // ToDo: Handle Multiple Headlines
-    console.log(headline)
-    const rangeStart = headline.meta.line
-    const supers = structureCollection.filter(
-      (entry) => entry.meta.type === "super"
-    )
-    // SUPERS WITHIN EACH HEADLINE
-    supers.forEach((candidate) => {
-      const superStartRange = candidate.meta.line
-      const superEndRangeCandidates = structureCollection.filter(
-        (entry) => entry.meta.line > superStartRange + 1
-      )
-      if (!superEndRangeCandidates.length >= 0) {
-        const blockCandidates = relationsCollection.filter(
-          (entry) =>
-            entry.meta.line > superStartRange
-        )
-        console.log("blockCandidates:", blockCandidates)
-        return
-      }
-      const superEndRange = superEndRangeCandidates[0].meta.line - 1
-      const blockCandidates = relationsCollection.filter(
-        (entry) =>
-          entry.meta.line > superStartRange && entry.meta.line < superEndRange
-      )
-      console.log("blockCandidates:", blockCandidates)
-      // ToDo: Save IDs of BlockCandidates (with ID of SUPER) 
-    })
-  })
-}
+  // HEADLINES WITHIN DOCUMENT
+  const headlines = getTypeMatch(structureCollection, 'headline')
+  console.log(headlines)
+  for (let i = 0; i < headlines.length; i++) {
+    const headlineStartRange = getStartRange(headlines, i)
+    const headlineEndRange = getEndRange(headlines, i)
 
+    // SUPERS WITHIN EACH HEADLINE
+    const supers = getCandidates(
+      structureCollection,
+      'super',
+      headlineStartRange,
+      headlineEndRange
+    )
+    console.log(supers)
+
+    // DETAILS WITHIN EACH SUPER
+    for (let i = 0; i < supers.length; i++) {
+      const superStartRange = getStartRange(supers, i)
+      const superEndRange = getEndRange(supers, i)
+      const details = getCandidates(
+        relationsCollection,
+        'detail',
+        superStartRange,
+        superEndRange
+      )
+      console.log('details:', details)
+    }
+    // ToDo: Save IDs of BlockCandidates (with ID of SUPER)
+  }
+}
 
 classifyContent(slices)
 createBlockIndex()
 // ToDo: Write Mermaid Markdown
-
 
 // Feature: One file, different mermaid blocks
 // headline or "super"?
